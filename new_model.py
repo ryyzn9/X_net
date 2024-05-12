@@ -111,6 +111,8 @@ class MultiheadAttn(nn.Module):
         self.w_o = nn.Linear(d_model,d_model,bias = False)
         self.w_g = nn.Linear(d_model,d_model,bias = False)
         self.group_norm = nn.GroupNorm(head_num, self.d_k)
+        self.swish = lambda x: x * torch.sigmoid(x)
+
         self.dropout = nn.Dropout(dropout)
         self.gammas = (1 - torch.exp(torch.linspace(math.log(1/32), math.log(1/512), head_num))).detach().cpu().tolist()
 
@@ -125,7 +127,7 @@ class MultiheadAttn(nn.Module):
         K = key
         V = value
         #(batch,head_num,seq_len,d_k) @(batch, seq_len, head_num, d_k) --> (batch, head_num, seq_len, seq_len)
-        ret = (Q @ K.permute(0, 2, 1)) * D.unsqueeze(0) #(batch, head_num, seq_len, seq_len)
+        ret = (Q @ K.transpose(-2,-1)) * D.unsqueeze(0) #(batch, head_num, seq_len, seq_len)
         
         #((batch, head_num, seq_len, seq_len)) @(b ,h ,s ,dk)--> (b , h, s, dk)
         return ret @ V
@@ -135,8 +137,8 @@ class MultiheadAttn(nn.Module):
         key = self.w_k(k)
         value = self.w_v(v)
 
-        query = self.xpos(query)
-        key = self.xpos(key)
+        query =query
+        key = key
         sequence_length = query.shape[1]
         
         x=q
@@ -163,7 +165,7 @@ class MultiheadAttn(nn.Module):
         value = value.view(value.shape[0],value.shape[1],self.head_num,self.d_k).transpose(1,2)  
         
 
-        y , self.attention_scores = MultiheadAttn.rention(self,D,query,key ,value=value ) 
+        y  = MultiheadAttn.rention(D,query,key ,value=value ) 
         #combine att the heads means concat
         # (batch ,h,seq_len,d_k)-->(batch,seq_len,head_num,dk)-->(batch,seq_len,d_model)
         y = y.transpose(1,2).contiguous().view(x.shape[0],-1,self.head_num*self.d_k) 
@@ -171,7 +173,7 @@ class MultiheadAttn(nn.Module):
 
         # multiply by  W_o
         y_shape = y.shape
-        y = self.group_norm(y.reshape(-1, self.v_dim)).reshape(y_shape)
+        y = self.group_norm(y.reshape(-1, self.d_k)).reshape(y_shape)
 
         return self.w_o(self.swish( self.w_g(x)*y ))
 
