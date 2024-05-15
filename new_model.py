@@ -97,14 +97,14 @@ class MultiheadAttn(nn.Module):
                  d_model:int,
                  head_num : int ,
                  dropout:float)->None:
-        
+
         super().__init__()
         self.d_model = d_model# (embedding vector)
         self.head_num = head_num
 
         assert d_model%head_num == 0, f"d_model is not divisible by h where h is {head_num} and d_model is {d_model}"
         self.d_k = d_model// head_num #dimention vector seen by each head
-        
+
         self.w_q = nn.Linear(d_model,d_model,bias = False)
         self.w_k = nn.Linear(d_model,d_model,bias = False)
         self.w_v = nn.Linear(d_model,d_model,bias = False)
@@ -116,59 +116,68 @@ class MultiheadAttn(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.gammas = (1 - torch.exp(torch.linspace(math.log(1/32), math.log(1/512), head_num))).detach().cpu().tolist()
 
-        self.xpos = XPOS(self.d_k)
+        self.xpos = XPOS(self.d_model)
     @staticmethod
-    def rention(D,query, 
+    def rention(D,query,
                   key,
                   value
                   ):
+
+
 
         Q = query
         K = key
         V = value
         #(batch,head_num,seq_len,d_k) @(batch, seq_len, head_num, d_k) --> (batch, head_num, seq_len, seq_len)
         ret = (Q @ K.transpose(-2,-1)) * D.unsqueeze(0) #(batch, head_num, seq_len, seq_len)
-        
+
         #((batch, head_num, seq_len, seq_len)) @(b ,h ,s ,dk)--> (b , h, s, dk)
-        return ret @ V
+        x= ret @ V
+        
+        return x
+
+
 
     def forward(self,q ,k ,v):
-        query = self.w_q(q)    
+        query = self.w_q(q)
         key = self.w_k(k)
         value = self.w_v(v)
 
-        query =query
-        key = key
+        # query =self.xpos(query)
+        # key = self.xpos(key)
         sequence_length = query.shape[1]
-        
+
         x=q
 
-        D = [self._get_D(self.new_method(sequence_length),gamma=gamma).to(device='cuda') for gamma in self.gammas]
-        
-        
+        D = [self._get_D(self.new_method(sequence_length),gamma=gamma).to(device="cuda") for gamma in self.gammas]
+
+
        # Convert the list of PyTorch tensors to a single PyTorch tensor
         D= torch.stack(D)
 
        # Add an extra dimension at the beginning
 
 
+        query =self.xpos(query)
+        key =self.xpos(key)
 
 
-        
-        
-        
+
+
+
+
         #break the q ,k,v for multilple heads
         #(batch,seq_len,d_model)-->(batch_size,seq_len,head_num,dk)-->(batch,head_num,seq_len,d_k)
 
-        query = query.view(query.shape[0],query.shape[1],self.head_num,self.d_k).transpose(1,2)  
+        query = query.view(query.shape[0],query.shape[1],self.head_num,self.d_k).transpose(1,2)
         key =   key.view(key.shape[0],key.shape[1],self.head_num,self.d_k).transpose(1,2)
-        value = value.view(value.shape[0],value.shape[1],self.head_num,self.d_k).transpose(1,2)  
-        
+        value = value.view(value.shape[0],value.shape[1],self.head_num,self.d_k).transpose(1,2)
 
-        y  = MultiheadAttn.rention(D,query,key ,value=value ) 
+
+        y  = MultiheadAttn.rention(D,query,key ,value=value )
         #combine att the heads means concat
         # (batch ,h,seq_len,d_k)-->(batch,seq_len,head_num,dk)-->(batch,seq_len,d_model)
-        y = y.transpose(1,2).contiguous().view(x.shape[0],-1,self.head_num*self.d_k) 
+        y = y.transpose(1,2).contiguous().view(y.shape[0],-1,self.head_num*self.d_k)
         #(batch,seq_len,d_model)-->(batch,seq_len,d_model)
 
         # multiply by  W_o
@@ -180,6 +189,8 @@ class MultiheadAttn(nn.Module):
 
     def new_method(self, sequence_length):
         return sequence_length
+
+
     def _get_D(self, sequence_length, gamma):
         n = torch.arange(sequence_length).unsqueeze(1)
         m = torch.arange(sequence_length).unsqueeze(0)
@@ -190,6 +201,7 @@ class MultiheadAttn(nn.Module):
         D[D != D] = 0
 
         return D
+
     
 class EncoderBlock(nn.Module):
     def __init__(self,features:int,Multi_Head_attention_block:MultiheadAttn,Feedforwaedblock:Feedforwaed,dropout:float)->None:
@@ -340,6 +352,15 @@ def build_transformer(en_vocab_size:int,
         if p.dim()>1:
             nn.init.xavier_uniform_(p)
     return transformer1
+
+        
+
+
+
+
+
+
+
 
         
 
