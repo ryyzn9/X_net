@@ -135,10 +135,10 @@ class MultiheadAttn(nn.Module):
         x=(Q @ K) * D.transpose(-2,-1).unsqueeze(0)
 
         
-        x = x.softmax(dim=-1)
+        x = x.softmax(dim=-1) #(b h s dk)
         
 
-        ret = x  #(batch, head_num, seq_len, seq_len)
+        ret = x  #(batch, head_num, seq_len, dk)
         #(n  k) @(d , k).T
         x=  ret @ V.transpose(-2,-1)
         
